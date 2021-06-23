@@ -8,12 +8,14 @@ django-debug-toolbar = "*"
 
 [packages]
 Django = "==3.2.3"
+djangorestframework = "*"
+djangorestframework-simplejwt = "*"
+djoser = "*"
+django-filter = "*"
 gunicorn = "==20.0.4"
 pillow = "*"
-django-allauth = "*"
 django-imagekit = "*"
 django-cleanup = "*"
-django-webpack-loader = "*"
 
 [requires]
 python_version = "3.8"

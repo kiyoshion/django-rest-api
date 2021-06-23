@@ -8,7 +8,6 @@ from django.http import JsonResponse, HttpRequest
 
 from .models import CustomUser
 from item.models import Item, Comment
-from item.views import ItemList
 
 class HomeDetail(TemplateView):
   model = CustomUser

@@ -1,5 +1,3 @@
-{% load render_bundle from webpack_loader %}
-
 {% load static %}
 
 <!DOCTYPE html>
@@ -11,12 +9,10 @@
   <title>{% block head_title %}Django CRUD{% endblock %}</title>
 
   {% include './layouts/_head_icon.html' %}
-  {% render_bundle 'main' 'css' %}
   {% block extracss %}{% endblock %}
 
 </head>
 <body class="min-h-screen bg-gray-50">
-  {% include 'layouts/_header.html' %}
 
   {% block hero %}{% endblock %}
 
@@ -26,7 +22,6 @@
 
   {% include 'layouts/_footer.html' %}
 
-  {% render_bundle 'main' 'js' %}
   {% block extrajs %}{% endblock %}
 </body>
 </html>
