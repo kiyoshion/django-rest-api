@@ -22,6 +22,7 @@ static/admin
 static/debug_toolbar
 static/icon
 static/img
+static/rest_framework
 
 ### Django.Python Stack ###
 # Byte-compiled / optimized / DLL files

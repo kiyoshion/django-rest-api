@@ -9,60 +9,23 @@ from django.db.models import Count, Prefetch, Q
 from django.core.exceptions import FieldError
 from .models import Item, Tag, Comment, Like
 
-class ItemList(ListView):
-  allow_empty = True
-  model = Item
-  template_name = 'item/list.html'
-  ordering = '-created_at'
-  paginate_by = 6
-  values = {
-    'origin': ('id', 'title', 'body', 'created_at', 'author_id', 'author_id__username', 'author_id__avatar', 'image', 'likes__user_id', 'likes__user_id__avatar'),
-    'comment': ('id', 'body', 'created_at', 'item_id', 'author_id', 'author_id__username', 'author_id__avatar'),
-      'like': ('id', 'created_at', 'user_id', 'user_id__avatar', 'user_id__username')
-    }
-  queryset = (
-    Item.objects.all()
-      .select_related('author')
-      .prefetch_related(
-        Prefetch(
-          'comment_set',
-          queryset=Comment.objects.all().select_related('author').order_by('-created_at').only(*values['comment']),
-          to_attr='comments'
-          )
-        )
-      .prefetch_related(
-        Prefetch(
-          'likes',
-          queryset=Like.objects.all().select_related('user').order_by('-created_at').only(*values['like']),
-          to_attr='islike'
-          )
-      )
-      .annotate(
-        Count('comment'),
-        Count('likes'),
-      )
-      .only(*values['origin'])
-  )
+from django_filters import rest_framework as filters
+from rest_framework import status, views
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
-  def get_queryset(self):
-    q = self.queryset.order_by('-created_at')
-    if self.request.user.is_authenticated:
-      q = q.annotate(currentuser_islike=Count('likes', filter=Q(likes__user=self.request.user)))
-    if 'sort' in self.request.GET and self.request.GET.get('sort') != 'created_at':
-      sort = self.request.GET.get('sort')
-      try:
-        q = q.annotate(sort=Count(sort)).order_by('-sort', '-created_at')
-      except FieldError:
-        q = q
-    return q
+from rest_framework.serializers import ImageField
 
-  def get_context_data(self, **kwargs):
-    context = super().get_context_data(**kwargs)
-    return context
+from django.shortcuts import get_object_or_404
 
-class ItemDetail(DetailView):
-  model = Item
-  template_name = 'item/detail.html'
+from .serializers import ItemSerializer
+
+class ItemFitler(filters.FilterSet):
+  class Meta:
+    model = Item
+    fields = ['id', 'title', 'author', 'created_at']
+
+class ItemListAPIView(views.APIView):
   values = {
     'origin': ('id', 'title', 'body', 'created_at', 'author_id', 'author_id__username', 'author_id__avatar', 'image', 'likes__user_id', 'likes__user_id__avatar'),
     'comment': ('id', 'body', 'created_at', 'item_id', 'author_id', 'author_id__username', 'author_id__avatar'),
@@ -100,21 +63,80 @@ class ItemDetail(DetailView):
   )
 
   def get_queryset(self):
-      return self.queryset
+    q = self.queryset.order_by('-created_at')
+    if self.request.user.is_authenticated:
+      q = q.annotate(current_islike=Count('likes', filter=Q(likes__user=self.request.user)))
+    if 'sort' in self.request.GET and self.request.GET.get('sort') != 'created_at':
+      sort = self.request.GET.get('sort')
+      try:
+        q = q.annotate(sort=Count(sort)).order_by('-sort', '-created_at')
+      except FieldError:
+        q = q
+    return q
 
-  def get_context_data(self, **kwargs):
-      context = super().get_context_data(**kwargs)
-      return context
+  def get(self, request, *args, **kwargs):
+    filterset = ItemFitler(request.query_params, queryset=self.get_queryset())
+    if not filterset.is_valid():
+      raise ValidationError(filterset.errors)
+    serializer = ItemSerializer(instance=filterset.qs, many=True)
+    return Response(serializer.data, status.HTTP_200_OK)
 
-class ItemCreate(LoginRequiredMixin, CreateView):
-  model = Item
-  form_class = CreateItemForm
-  template_name = 'item/create.html'
+class ItemRetriveAPIView(views.APIView):
+  values = {
+  'origin': ('id', 'title', 'body', 'created_at', 'author_id', 'author_id__username', 'author_id__avatar', 'image', 'likes__user_id', 'likes__user_id__avatar'),
+  'comment': ('id', 'body', 'created_at', 'item_id', 'author_id', 'author_id__username', 'author_id__avatar'),
+    'like': ('id', 'created_at', 'user_id', 'user_id__avatar', 'user_id__username')
+  }
+  queryset = (
+    Item.objects.all()
+      .select_related('author')
+      .prefetch_related(
+        Prefetch(
+          'comment_set',
+          queryset=Comment.objects.all().select_related('author').order_by('-created_at').only(*values['comment']),
+          to_attr='comments'
+          )
+        )
+      .prefetch_related(
+        Prefetch(
+          'likes',
+          queryset=Like.objects.all().select_related('user').order_by('-created_at').only(*values['like']),
+          to_attr='islike'
+          )
+      )
+      .prefetch_related(
+        Prefetch(
+          'tags',
+          queryset=Tag.objects.all(),
+          to_attr='hasTags'
+          )
+      )
+      .annotate(
+        Count('comment'),
+        Count('likes'),
+      )
+      .only(*values['origin'])
+  )
 
-  def form_valid(self, form):
-    item = form.save(commit=False)
-    item.author = self.request.user
-    item.save()
+  def get_queryset(self):
+    q = self.queryset
+    if self.request.user.is_authenticated:
+      q = q.annotate(current_islike=Count('likes', filter=Q(likes__user=self.request.user)))
+    return q
+
+  def get(self, request, pk, *args, **kwargs):
+    item = get_object_or_404(self.get_queryset(), pk=pk)
+    serializer = ItemSerializer(instance=item)
+    return Response(serializer.data, status.HTTP_200_OK)
+
+class ItemCreateAPIView(views.APIView):
+
+  def post(self, request, *args, **kwargs):
+    serializer = ItemSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save(commti=False)
+    serializer.author = self.request.user
+    serializer.save()
     tags = self.request.POST['tags'].split(',')
 
     if tags:
@@ -123,48 +145,24 @@ class ItemCreate(LoginRequiredMixin, CreateView):
         if tag_name != '':
           exist = Tag.objects.filter(name=tag_name).first()
           if exist:
-            item.tags.add(exist)
+            serializer.tags.add(exist)
           else:
-            item.tags.create(name=tag_name)
+            serializer.tags.create(name=tag_name)
+    return Response(serializer.data, status.HTTP_201_CREATED)
 
-    return redirect('item.detail', pk=item.id)
+class ItemUpdateAPIView(views.APIView):
 
-class ItemDelete(LoginRequiredMixin, DeleteView):
-  model = Item
-  template_name = 'item/delete.html'
-  success_url = reverse_lazy('item.list')
-
-  def get_queryset(self):
-    queryset = super().get_queryset()
-    return queryset.filter(author=self.request.user)
-
-class ItemUpdate(LoginRequiredMixin, UpdateView):
-  model = Item
-  form_class = CreateItemForm
-  template_name = 'item/update.html'
-  success_url = reverse_lazy('item.list')
-
-  def get_context_data(self, **kwargs):
-    context = super().get_context_data(**kwargs)
-    tags = self.object.tags.all()
-    arr = []
-    for tag in tags:
-      arr.append(tag.name)
-    context['tag_arr'] = arr
-    return context
-
-  def get_queryset(self):
-    queryset = super().get_queryset()
-    return queryset.filter(author=self.request.user)
-
-  def form_valid(self, form):
-    item = form.save(commit=False)
-    item.save()
+  def put(self, request, pk, *args, **kwargs):
+    item = get_object_or_404(Item, pk=pk)
+    serializer = ItemSerializer(instance=item, data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save(commit=False)
+    serializer.save()
 
     # Remove current tags
-    current_tags = item.tags.all()
+    current_tags = serializer.tags.all()
     for current_tag in current_tags:
-      item.tags.remove(current_tag)
+      serializer.tags.remove(current_tag)
       if current_tag.item_set.count() == 0:
         current_tag.delete()
 
@@ -176,12 +174,27 @@ class ItemUpdate(LoginRequiredMixin, UpdateView):
         if tag_name != '':
           exist = Tag.objects.filter(name=tag_name).first()
           if exist:
-            item.tags.add(exist)
+            serializer.tags.add(exist)
           else:
-            item.tags.create(name=tag_name)
+            serializer.tags.create(name=tag_name)
 
-    return redirect('item.detail', pk=item.id)
+    return Response(serializer.data, status.HTTP_200_OK)
 
+  def patch(self, request, pk, *args, **kwargs):
+    item = get_object_or_404(Item, pk=pk)
+    serializer = ItemSerializer(instance=item, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data, status.HTTP_200_OK)
+
+class ItemDestroyAPIView(views.APIView):
+  def delete(self, request, pk, *args, **kwargs):
+    item = get_object_or_404(Item, pk=pk)
+    item.delete()
+    return Response(status.HTTP_204_NO_CONTENT)
+
+
+'''
 def create_comment(request, pk):
 
   if request.method == 'POST':
@@ -300,3 +313,4 @@ class ItemTagList(ListView):
       context['tag_id'] = self.kwargs['pk']
       context['tag_name'] = tag_name
       return context
+'''
