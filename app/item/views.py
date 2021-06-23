@@ -10,7 +10,7 @@ from django.core.exceptions import FieldError
 from .models import Item, Tag, Comment, Like
 
 from django_filters import rest_framework as filters
-from rest_framework import status, views
+from rest_framework import status, views, generics
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
@@ -25,7 +25,8 @@ class ItemFitler(filters.FilterSet):
     model = Item
     fields = ['id', 'title', 'author', 'created_at']
 
-class ItemListAPIView(views.APIView):
+class ItemListCreateAPIView(generics.ListCreateAPIView):
+  serializer_class = ItemSerializer
   values = {
     'origin': ('id', 'title', 'body', 'created_at', 'author_id', 'author_id__username', 'author_id__avatar', 'image', 'likes__user_id', 'likes__user_id__avatar'),
     'comment': ('id', 'body', 'created_at', 'item_id', 'author_id', 'author_id__username', 'author_id__avatar'),
@@ -74,14 +75,48 @@ class ItemListAPIView(views.APIView):
         q = q
     return q
 
-  def get(self, request, *args, **kwargs):
-    filterset = ItemFitler(request.query_params, queryset=self.get_queryset())
-    if not filterset.is_valid():
-      raise ValidationError(filterset.errors)
-    serializer = ItemSerializer(instance=filterset.qs, many=True)
-    return Response(serializer.data, status.HTTP_200_OK)
+  # def get(self, request, *args, **kwargs):
+  #   filterset = ItemFitler(request.query_params, queryset=self.get_queryset())
+  #   if not filterset.is_valid():
+  #     raise ValidationError(filterset.errors)
+  #   serializer = ItemSerializer(instance=filterset.qs, many=True)
+  #   return Response(serializer.data, status.HTTP_200_OK)
 
-class ItemRetriveAPIView(views.APIView):
+  def perform_create(self, serializer):
+    serializer.save(author=self.request.user)
+    tags = self.request.POST['tags'].split(',')
+
+    if tags:
+      for tag_name in tags:
+        tag_name = tag_name.strip()
+        if tag_name != '':
+          exist = Tag.objects.filter(name=tag_name).first()
+          if exist:
+            serializer.tags.add(exist)
+          else:
+            serializer.tags.create(name=tag_name)
+
+
+  # def post(self, request, *args, **kwargs):
+  #   serializer = ItemSerializer(data=request.data)
+  #   serializer.is_valid(raise_exception=True)
+  #   serializer.save(commti=False)
+  #   serializer.author = self.request.user
+  #   serializer.save()
+  #   tags = self.request.POST['tags'].split(',')
+
+  #   if tags:
+  #     for tag_name in tags:
+  #       tag_name = tag_name.strip()
+  #       if tag_name != '':
+  #         exist = Tag.objects.filter(name=tag_name).first()
+  #         if exist:
+  #           serializer.tags.add(exist)
+  #         else:
+  #           serializer.tags.create(name=tag_name)
+  #   return Response(serializer.data, status.HTTP_201_CREATED)
+
+class ItemRetriveUpdateDestroyAPIView(views.APIView):
   values = {
   'origin': ('id', 'title', 'body', 'created_at', 'author_id', 'author_id__username', 'author_id__avatar', 'image', 'likes__user_id', 'likes__user_id__avatar'),
   'comment': ('id', 'body', 'created_at', 'item_id', 'author_id', 'author_id__username', 'author_id__avatar'),
@@ -129,29 +164,6 @@ class ItemRetriveAPIView(views.APIView):
     serializer = ItemSerializer(instance=item)
     return Response(serializer.data, status.HTTP_200_OK)
 
-class ItemCreateAPIView(views.APIView):
-
-  def post(self, request, *args, **kwargs):
-    serializer = ItemSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    serializer.save(commti=False)
-    serializer.author = self.request.user
-    serializer.save()
-    tags = self.request.POST['tags'].split(',')
-
-    if tags:
-      for tag_name in tags:
-        tag_name = tag_name.strip()
-        if tag_name != '':
-          exist = Tag.objects.filter(name=tag_name).first()
-          if exist:
-            serializer.tags.add(exist)
-          else:
-            serializer.tags.create(name=tag_name)
-    return Response(serializer.data, status.HTTP_201_CREATED)
-
-class ItemUpdateAPIView(views.APIView):
-
   def put(self, request, pk, *args, **kwargs):
     item = get_object_or_404(Item, pk=pk)
     serializer = ItemSerializer(instance=item, data=request.data)
@@ -187,12 +199,10 @@ class ItemUpdateAPIView(views.APIView):
     serializer.save()
     return Response(serializer.data, status.HTTP_200_OK)
 
-class ItemDestroyAPIView(views.APIView):
   def delete(self, request, pk, *args, **kwargs):
     item = get_object_or_404(Item, pk=pk)
     item.delete()
     return Response(status.HTTP_204_NO_CONTENT)
-
 
 '''
 def create_comment(request, pk):
