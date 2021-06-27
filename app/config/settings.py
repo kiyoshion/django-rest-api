@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.sites',
     'rest_framework',
     'djoser',
+    'corsheaders',
     'django_filters',
     'django_cleanup.apps.CleanupConfig',
     'imagekit',
@@ -49,6 +50,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -161,9 +163,9 @@ ACCOUNT_EMAIL_REQUIRED = True
 
 SITE_ID = 1
 
-LOGIN_REDIRECT_URL = 'home'
+LOGIN_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_ON_GET = True
-ACCOUNT_LOGOUT_REDIRECT_URL = '/accounts/login/'
+ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
 # Mail
 
@@ -179,17 +181,28 @@ EMAIL_PORT = os.environ.get('EMAIL_PORT')
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # 'rest_framework.authentication.SessionAuthentication',
     ],
+    'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
+    'TEST_REQUEST_DEFAULT_FORMAT': 'json',
+    'DEFAULT_PREMISSION_CLASSES': ('rest_framework.permissions.DjangoModelPermissions',),
 }
 
 SIMPLE_JWT = {
-    'AUTH_HEADER_TYPES': ('JWT',),
+    # 'AUTH_HEADER_TYPES': ('JWT',),
+    'AUTH_HEADER_TYPES': ('Bearer',),
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
 }
 
 DJOSER = {
     'LOGIN_FIELD':'email',
 }
+
+CORS_ORIGIN_ALLOW_ALL = False
+CORS_ORIGIN_WHITELIST = (
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+)
 
 if DEBUG:
   def show_toolbar(request):
